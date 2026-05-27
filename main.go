@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"runtime"
+	"runtime/debug"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -35,112 +39,150 @@ var jogos = map[string]LinkConfig{
 	},
 }
 
+// Cache global com RWMutex para concorrência
+var (
+	cacheMutex sync.RWMutex
+	cacheJogos = make(map[string][]GiftCode)
+)
+
 func main() {
+	// Otimizações de RAM
+	runtime.GOMAXPROCS(2)
+	debug.SetGCPercent(20)
+	debug.FreeOSMemory()
 
-	http.HandleFunc("/codigos", func(w http.ResponseWriter, r *http.Request) {
+	// Worker de atualização em background
+	// Roda imediatamente ao iniciar, depois repete a cada 2 minutos
+	go func() {
+		fmt.Println("[Init] Gerando cache inicial...")
+		atualizarTodosOsCodigos()
 
-		//pega valor do campo game
-		gameNameUrl := r.URL.Query().Get("game")
+		ticker := time.NewTicker(2 * time.Minute)
+		for range ticker.C {
+			fmt.Println("[Worker] Atualizando códigos (2 min)...")
+			atualizarTodosOsCodigos()
+		}
+	}()
 
-		//verifica se o nome é de um dos suportados
-		ValidGameconfig, validGameStatus := verifyGameName(gameNameUrl)
+	// Rota principal
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		gameNameUrl := strings.ToUpper(strings.TrimPrefix(r.URL.Path, "/"))
 
-		//verifica status, se o jogo é válido
-		if validGameStatus != true {
-			fmt.Fprintf(w, "Jogo inválido.")
+		if _, validGameStatus := verifyGameName(gameNameUrl); !validGameStatus {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, "Jogo inválido. Use /GI, /HSR ou /ZZZ")
 			return
 		}
 
-		//pega o código do jogo se o jogo for válido
-		codigos, err := getCodes(ValidGameconfig.Game8url, ValidGameconfig.RedeemUrl)
+		// Trava de leitura rápida
+		cacheMutex.RLock()
+		codigos, existe := cacheJogos[gameNameUrl]
+		cacheMutex.RUnlock()
 
-		if len(codigos) == 0 {
-			fmt.Println("Erro ao obter códigos")
+		if !existe || len(codigos) == 0 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, "Cache vazio ou carregando. Tente novamente em instantes.")
 			return
 		}
 
-		//verifica se teve erro.
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprint(w, "Houve um erro ao buscar os códigos.")
-			return
-		}
-
-		//fmt.Println("codes: ", codigos)
-
-		//definições do json
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(codigos)
-
-		//salva codigos no json
-		saveToJson(gameNameUrl, codigos)
 	})
 
-	fmt.Println("Server rodando na porta 8080")
-
+	fmt.Println("[Server] Listening on :8080")
 	http.ListenAndServe(":8080", nil)
+}
 
+func atualizarTodosOsCodigos() {
+	for nomeJogo, config := range jogos {
+		fmt.Printf("[Scraper] Buscando códigos: %s...\n", nomeJogo)
+
+		codigos, err := getCodes(config.Game8url, config.RedeemUrl)
+		if err != nil {
+			ReturnError(fmt.Errorf("falha ao atualizar %s: %v", nomeJogo, err))
+			continue
+		}
+
+		if len(codigos) == 0 {
+			fmt.Printf("[Aviso] Nenhum código encontrado para %s\n", nomeJogo)
+			continue
+		}
+
+		// Trava de escrita para atualizar o map global
+		cacheMutex.Lock()
+		cacheJogos[nomeJogo] = codigos
+		cacheMutex.Unlock()
+
+		saveToJson(nomeJogo, codigos)
+	}
+	fmt.Println("[Scraper] Sincronização concluída.")
 }
 
 func getCodes(gameLink string, redeemLink string) ([]GiftCode, error) {
+	var resultado []GiftCode
 
-	var resultado = []GiftCode{}
-
-	//pega a resposta da requisição e erro se houver
-	res, err := http.Get(gameLink)
-
+	// Cria a requisição manualmente em vez de usar http.Get direto
+	req, err := http.NewRequest("GET", gameLink, nil)
 	if err != nil {
-		ReturnError(err)
 		return nil, err
 	}
 
-	//trava o fechamento da url no final do main()
+	// Adiciona um User-Agent fingindo ser o Google Chrome no Windows
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+
+	// Usa um Client com timeout de 10 segundos para o scraper não ficar travado infinitamente
+	client := &http.Client{Timeout: 10 * time.Second}
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
 	defer res.Body.Close()
 
-	doc, _ := goquery.NewDocumentFromReader(res.Body)
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("site retornou status: %d", res.StatusCode)
+	}
 
-	//extração
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Faz a busca pelos seletores HTML (mantive a sua lógica original)
 	doc.Find("tbody").Each(func(i int, s *goquery.Selection) {
 		s.Find(".a-clipboard__textInput").Each(func(j int, item *goquery.Selection) {
 			code, _ := item.Attr("value")
 
-			//se código mão for vazio coleta
 			if code != "" {
-				link := redeemLink + code
-				item := GiftCode{Codigo: code, Link: link}
-				resultado = append(resultado, item)
+				resultado = append(resultado, GiftCode{
+					Codigo: code,
+					Link:   redeemLink + code,
+				})
 			}
-
 		})
 	})
 
 	return resultado, nil
 }
 
-// funcao que salva um json com o nome do jogo extraido
 func saveToJson(gameNameUrl string, dados []GiftCode) {
-	bytes, err := json.Marshal(dados)
+	bytes, err := json.MarshalIndent(dados, "", "  ")
 	if err != nil {
 		ReturnError(err)
 		return
 	}
 
-	res := os.WriteFile(gameNameUrl+".json", bytes, 0644)
-
-	if res != nil {
-		ReturnError(res)
-		return
+	err = os.WriteFile(gameNameUrl+".json", bytes, 0644)
+	if err != nil {
+		ReturnError(err)
 	}
-
 }
 
 func verifyGameName(gameName string) (LinkConfig, bool) {
-
 	config, status := jogos[gameName]
-
 	return config, status
 }
 
 func ReturnError(erro error) {
-	fmt.Printf("[ ERRO ] [%s]: %s ", time.Now(), erro)
+	fmt.Printf("[Erro] [%s]: %v\n", time.Now().Format("2006-01-02 15:04:05"), erro)
 }
