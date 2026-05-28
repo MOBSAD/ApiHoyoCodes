@@ -41,7 +41,7 @@ var jogos = map[string]LinkConfig{
 
 // Cache global com RWMutex para concorrência
 var (
-	cacheMutex sync.RWMutex
+	cacheMutex sync.Mutex
 	cacheJogos = make(map[string][]GiftCode)
 )
 
@@ -75,9 +75,9 @@ func main() {
 		}
 
 		// Trava de leitura rápida
-		cacheMutex.RLock()
+		cacheMutex.Lock()
 		codigos, existe := cacheJogos[gameNameUrl]
-		cacheMutex.RUnlock()
+		cacheMutex.Unlock()
 
 		if !existe || len(codigos) == 0 {
 			w.WriteHeader(http.StatusServiceUnavailable)
