@@ -1,113 +1,94 @@
 # ApiHoyoCodes
 
-Uma API robusta desenvolvida em Go para automação e consulta de códigos de resgate (Gift Codes) dos jogos da Hoyoverse (Genshin Impact, Honkai: Star Rail e Zenless Zone Zero).
+  
 
-O projeto nasceu de um simples web scraper e evoluiu para um microserviço capaz de gerenciar múltiplos jogos, realizar persistência em cache local e tratar erros de forma resiliente.
+Uma API de alta performance desenvolvida em Go para automação, scraping e consulta centralizada de códigos de resgate (Gift Codes) dos jogos da Hoyoverse (*Genshin Impact*, *Honkai: Star Rail* e *Zenless Zone Zero*).
 
----
+  
 
-## 📚 Evolução do Projeto
+O projeto evoluiu de um script simples de automação para um microserviço resiliente que opera com **processamento assíncrono em background**, **cache in-memory** thread-safe e **módulos de evasão anti-bot**.
 
-Este repositório documenta uma jornada de aprendizado dividida em capítulos:
+  
 
-1. **O Nascimento**
-   - Criação de um scraper funcional usando `goquery`.
+## 📚 Evolução da Arquitetura
 
-2. **Modularização**
-   - Separação da lógica de busca da lógica do servidor.
+  
 
-3. **Persistência**
-   - Implementação de cache local em JSON para evitar requisições desnecessárias.
+Este repositório documenta uma jornada de engenharia de software dividida em marcos de maturidade:
 
-4. **Escalabilidade**
-   - Uso de `structs` de configuração para suportar novos jogos dinamicamente.
+1. **O Nascimento (Scripting):** Criação de um scraper funcional básico usando `goquery`.
 
-5. **Segurança**
-   - Implementação de tratamento de erros e proteção contra vazamento de chaves no Git.
+2. **Modularização:** Separação da lógica de extração da camada de transporte HTTP.
 
----
+3. **Persistência Física:** Implementação de cache local em arquivos JSON para persistência fria.
 
-## ⚙️ Tecnologias Utilizadas
+4. **Alta Performance (Arquitetura Atual):** Transição para rotas REST puras não bloqueantes, onde os dados são servidos instantaneamente a partir da memória RAM protegida por travas concorrentes (`sync.Mutex`), enquanto um Worker em background atualiza o cache de forma independente.
 
-- **Go (Golang)** – Linguagem principal  
-- **Goquery** – Para análise e extração de dados HTML  
-- **Standard Library**
-  - `net/http`
-  - `encoding/json`
-  - `os`
+  
 
----
+## ⚙️ Tecnologias & Otimizações Internas
+- **Go (Golang)** – Core runtime da aplicação.
+- **Goquery** – Sintaxe fluída para análise e extração de dados DOM (HTML).
+- **Runtime Fine-Tuning:** 
+	-Limitação manual de concorrência com `runtime.GOMAXPROCS(2)`.
+	-Controle agressivo de coleta de lixo com `debug.SetGCPercent(20)` para ambientes de baixo consumo (como setups embarcados ou mobile).
 
-## 🚀 Funcionalidades
+  
 
-- **Busca Dinâmica**
-  - Consulta códigos de diferentes jogos via parâmetros de URL
+## 🚀 Funcionalidades Modernizadas
+- **Rotas REST de Baixíssima Latência** 
+	- - Respostas na casa dos microssegundos. O servidor consome o cache direto da memória RAM, eliminando o gargalo de IO ou requisições externas na rota do usuário.
+- **Background Worker Autónomo** 
+	- Um cronômetro interno (`time.Ticker`) varre as fontes de dados a cada **2 minutos** em uma Goroutine isolada, mantendo a API sempre atualizada sem congelar o servidor.
+- **Evasão de Bloqueios Anti-Bot** 
+	- Emissão de requisições HTTP forjando cabeçalhos de navegadores reais (*User-Agent* customizado) e mecanismos de *Timeout* estritos (10 segundos) para evitar travamentos por conexões zumbis.
+- **Persistência Híbrida** 
+	- Mantém cópias físicas atualizadas em arquivos `.json` estruturados de cada jogo como redundância local.
 
-- **Geração de Links de Resgate**
-  - Constrói automaticamente o link oficial para resgate direto
-
-- **Cache Inteligente**
-  - Salva os códigos encontrados em arquivos `.json` nomeados por jogo
-
-- **Tratamento de Erros**
-  - Sistema de log centralizado e prevenção de quedas do servidor
-
----
+  
 
 ## 🛠️ Como Executar
-
 ### 1. Clone o repositório
 
 ```bash
 git clone git@github.com:MOBSAD/ApiHoyoCodes.git
-```
-
-### 2. Instale as dependências
+``` 
+### 2.Instale as dependências
 
 ```bash
 go mod tidy
-```
+``` 
 
-### 3. Inicie o servidor
+### 3. Inicie o microserviço
 
-```bash
+``` Bash
 go run main.go
 ```
+### 4. Endpoints da API
 
-### 4. Teste a API
-
-Acesse via navegador, Insomnia ou Postman:
+- Acesse diretamente os recursos através de rotas limpas no navegador ou clientes HTTP (curl, Postman):
 
 - **Genshin Impact**
-  ```
-  http://localhost:8080/codigos?game=GI
-  ```
+  
+```Plaintext
+	http://localhost:3000/GI
+```
 
 - **Honkai: Star Rail**
-  ```
-  http://localhost:8080/codigos?game=HSR
-  ```
+
+```Plaintext
+	http://localhost:3000/HSR
+```
 
 - **Zenless Zone Zero**
-  ```
-  http://localhost:8080/codigos?game=ZZZ
-  ```
 
----
+```Plaintext
+	http://localhost:3000/ZZZ
+```
 
-## 🔐 Segurança
+### 🔐 Concorrência e Resiliência
 
-Este projeto implementa boas práticas de segurança, incluindo:
+A aplicação implementa primitivos primitivos de segurança em sistemas distribuídos:
 
-1. Verificação de nomes de jogos suportados antes de processar requisições  
-2. Prevenção de `log.Fatal` em rotas críticas para manter o servidor online  
-
----
-
-## 📌 Observação
-
-Este projeto começou como um experimento e evoluiu para uma arquitetura mais estruturada, sendo útil como estudo de:
-- Web scraping
-- APIs REST em Go
-- Cache local
-- Organização de código escalável
+1. **Exclusão Mútua** (`sync.Mutex`): Garante proteção total de leitura/escrita contra Data Races no mapa de memória durante os ciclos de varredura do scraper.
+2. **Isolamento de Falhas**: Erros de rede nas requisições do scraper são capturados, logados com marca temporal pela função `ReturnError`, mas nunca derrubam o servidor HTTP principal.

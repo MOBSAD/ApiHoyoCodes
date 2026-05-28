@@ -89,8 +89,8 @@ func main() {
 		json.NewEncoder(w).Encode(codigos)
 	})
 
-	fmt.Println("[Server] Listening on :8080")
-	http.ListenAndServe(":8080", nil)
+	fmt.Println("[Server] Listening on :3000")
+	http.ListenAndServe(":3000", nil)
 }
 
 func atualizarTodosOsCodigos() {
