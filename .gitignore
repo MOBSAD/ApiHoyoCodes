@@ -1,0 +1,24 @@
+.env
+
+# Arquivos gerados pelo programa
+GI.json
+HSR.json
+ZZZ.json
+redeem_history.json
+redeem_history.json.tmp
+
+# Binários e testes
+/ApiHoyoCodes
+*.test
+coverage.out
+
+# Logs e arquivos temporários
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Editores e sistema
+.vscode/
+.idea/
+.DS_Store
