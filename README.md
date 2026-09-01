@@ -13,6 +13,10 @@ utilizados, expirados, inválidos ou com limite de uso atingido ficam salvos em 
 histórico local e são ignorados nas próximas coletas. O terminal mostra esse
 processo em um dashboard que é atualizado sem criar centenas de linhas.
 
+## Demonstração
+
+![ApiHoyoCodes Demo](assets/demo.gif)
+
 ## Como funciona
 
 ```text
