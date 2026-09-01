@@ -117,7 +117,9 @@ func (t *TerminalState) atualizarEstatisticas(jogo string, resgataveis int, fina
 	if t.ansi {
 		t.renderDinamico()
 	} else if t.iniciado {
-		fmt.Printf("[Coleta] %s | ✓ %d resgatáveis | ✗ %d usados/inválidos\n", jogo, resgataveis, finalizados)
+		fmt.Printf("[Coleta] %s | ✓ %s | ✗ %s\n", jogo,
+			formatarQuantidade(resgataveis, "resgatável", "resgatáveis"),
+			formatarQuantidade(finalizados, "usado/inválido", "usados/inválidos"))
 	}
 }
 
@@ -247,5 +249,14 @@ func (t *TerminalState) linhasAtuais() []string {
 
 func formatarJogo(jogo string, stats GameStats) string {
 	espacos := strings.Repeat(" ", 3-len(jogo))
-	return fmt.Sprintf("%s%s: %d resgatáveis | %d usados/inválidos", jogo, espacos, stats.Resgataveis, stats.Finalizados)
+	return fmt.Sprintf("%s%s: %s | %s", jogo, espacos,
+		formatarQuantidade(stats.Resgataveis, "resgatável", "resgatáveis"),
+		formatarQuantidade(stats.Finalizados, "usado/inválido", "usados/inválidos"))
+}
+
+func formatarQuantidade(quantidade int, singular string, plural string) string {
+	if quantidade == 1 {
+		return fmt.Sprintf("%d %s", quantidade, singular)
+	}
+	return fmt.Sprintf("%d %s", quantidade, plural)
 }

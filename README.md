@@ -1,6 +1,6 @@
 # ApiHoyoCodes
 
-Api em Go que busca códigos de Genshin Impact (GI), Honkai: Star Rail (HSR) e
+API em Go que busca códigos de Genshin Impact (GI), Honkai: Star Rail (HSR) e
 Zenless Zone Zero (ZZZ).
 
 O programa mantém uma API HTTP local com os códigos encontrados e tenta
@@ -134,7 +134,7 @@ ZZZ -> http://localhost:3000/ZZZ
 Coleta concluída
 GI : 3 resgatáveis | 5 usados/inválidos
 HSR: 2 resgatáveis | 8 usados/inválidos
-ZZZ: 1 resgatáveis | 4 usados/inválidos
+ZZZ: 1 resgatável | 4 usados/inválidos
 Redeem: aguardando códigos
 Próxima coleta em: 04:59
 ```
